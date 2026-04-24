@@ -53,8 +53,14 @@ export async function middleware(request: Request) {
     const requestHeaders = new Headers(request.headers)
     requestHeaders.set("X-User-Id", session.user.id)
 
-    // This endpoint computes send capability itself; avoid a duplicated role lookup here.
-    if (pathname === '/api/emails/send-permission' && request.method === 'GET') {
+    // These GET endpoints already enforce ownership / send capability in their route handlers.
+    // Avoid a duplicated role lookup in middleware for the hot polling path.
+    const isEmailReadPath = request.method === 'GET' && (
+      pathname === '/api/emails' ||
+      /^\/api\/emails\/[^/]+$/.test(pathname) ||
+      pathname === '/api/emails/send-permission'
+    )
+    if (isEmailReadPath) {
       requestHeaders.set("X-Middleware-Timing", [...middlewareTimings, `mw-total;dur=${Date.now() - middlewareStartedAt}`].join(', '))
       return NextResponse.next({ request: { headers: requestHeaders } })
     }
