@@ -31,6 +31,21 @@ function corsHeaders(request: Request) {
   return headers
 }
 
+const PAGES_ORIGIN = 'https://moemail-5bt.pages.dev'
+
+async function proxyToPages(request: Request) {
+  const url = new URL(request.url)
+  const target = new URL(url.pathname + url.search, PAGES_ORIGIN)
+  const headers = new Headers(request.headers)
+  headers.set('Host', new URL(PAGES_ORIGIN).host)
+  return fetch(new Request(target, {
+    method: request.method,
+    headers,
+    body: request.method === 'GET' || request.method === 'HEAD' ? undefined : request.body,
+    redirect: 'manual',
+  }))
+}
+
 async function getUserIdByApiKey(env: Env, request: Request, timings: string[]) {
   const apiKey = request.headers.get('X-API-Key')
   if (!apiKey) return null
@@ -260,6 +275,10 @@ export default {
         return new Response(res.body, { status: res.status, headers })
       }
 
+      if (!request.headers.get('X-API-Key')) {
+        return proxyToPages(request)
+      }
+
       const userId = await getUserIdByApiKey(env, request, timings)
       if (!userId) return json({ error: '无效的 API Key' }, { status: 401 }, timings, startedAt)
 
@@ -272,7 +291,7 @@ export default {
         if (request.method === 'GET' && match) response = await handleMessages(env, request, userId, match[1], timings, startedAt)
       }
 
-      if (!response) return json({ error: 'Not found' }, { status: 404 }, timings, startedAt)
+      if (!response) return proxyToPages(request)
       const headers = new Headers(response.headers)
       for (const [k, v] of corsHeaders(request)) headers.set(k, v)
       return new Response(response.body, { status: response.status, headers })
