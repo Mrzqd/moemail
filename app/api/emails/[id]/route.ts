@@ -60,7 +60,8 @@ export async function GET(
   }
   const json = (body: unknown, init?: ResponseInit) => {
     const headers = new Headers(init?.headers)
-    headers.set('Server-Timing', [...timings, `total;dur=${Date.now() - startedAt}`].join(', '))
+    const middlewareTiming = request.headers.get('X-Middleware-Timing')
+    headers.set('Server-Timing', [middlewareTiming, ...timings, `route-total;dur=${Date.now() - startedAt}`].filter(Boolean).join(', '))
     return NextResponse.json(body, { ...init, headers })
   }
 

@@ -15,6 +15,13 @@ const API_PERMISSIONS: Record<string, Permission> = {
 }
 
 export async function middleware(request: Request) {
+  const middlewareStartedAt = Date.now()
+  const middlewareTimings: string[] = []
+  const markMiddleware = (name: string, from: number) => {
+    middlewareTimings.push(`${name};dur=${Date.now() - from}`)
+    return Date.now()
+  }
+
   const url = new URL(request.url)
   const pathname = url.pathname
 
@@ -33,7 +40,9 @@ export async function middleware(request: Request) {
       return NextResponse.next()
     }
 
+    const authStartedAt = Date.now()
     const session = await auth()
+    markMiddleware('mw-auth', authStartedAt)
     if (!session?.user?.id) {
       return NextResponse.json(
         { error: "未授权" },
@@ -46,12 +55,15 @@ export async function middleware(request: Request) {
 
     // This endpoint computes send capability itself; avoid a duplicated role lookup here.
     if (pathname === '/api/emails/send-permission' && request.method === 'GET') {
+      requestHeaders.set("X-Middleware-Timing", [...middlewareTimings, `mw-total;dur=${Date.now() - middlewareStartedAt}`].join(', '))
       return NextResponse.next({ request: { headers: requestHeaders } })
     }
 
     for (const [route, permission] of Object.entries(API_PERMISSIONS)) {
       if (pathname.startsWith(route)) {
+        const permissionStartedAt = Date.now()
         const hasAccess = await checkPermissionForUser(session.user.id, permission)
+        middlewareTimings.push(`mw-permission;dur=${Date.now() - permissionStartedAt}`)
 
         if (!hasAccess) {
           return NextResponse.json(
@@ -62,6 +74,7 @@ export async function middleware(request: Request) {
         break
       }
     }
+    requestHeaders.set("X-Middleware-Timing", [...middlewareTimings, `mw-total;dur=${Date.now() - middlewareStartedAt}`].join(', '))
     return NextResponse.next({ request: { headers: requestHeaders } })
   }
 
