@@ -14,6 +14,7 @@ export async function GET(request: Request) {
 
   const { searchParams } = new URL(request.url)
   const cursor = searchParams.get('cursor')
+  const includeTotal = searchParams.get('includeTotal') === '1'
   
   const db = createDb()
 
@@ -23,10 +24,11 @@ export async function GET(request: Request) {
       gt(emails.expiresAt, new Date())
     )
 
-    const totalResult = await db.select({ count: sql<number>`count(*)` })
-      .from(emails)
-      .where(baseConditions)
-    const totalCount = Number(totalResult[0].count)
+    const totalCount = includeTotal
+      ? Number((await db.select({ count: sql<number>`count(*)` })
+        .from(emails)
+        .where(baseConditions))[0].count)
+      : undefined
 
     const conditions = [baseConditions]
 
@@ -64,7 +66,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ 
       emails: emailList,
       nextCursor,
-      total: totalCount
+      ...(includeTotal ? { total: totalCount } : {})
     })
   } catch (error) {
     console.error('Failed to fetch user emails:', error)

@@ -55,6 +55,7 @@ export async function GET(
   const { searchParams } = new URL(request.url)
   const cursorStr = searchParams.get('cursor')
   const messageType = searchParams.get('type')
+  const includeTotal = searchParams.get('includeTotal') === '1'
 
   try {
     const db = createDb()
@@ -95,10 +96,11 @@ export async function GET(
           )
     )
 
-    const totalResult = await db.select({ count: sql<number>`count(*)` })
-      .from(messages)
-      .where(baseConditions)
-    const totalCount = Number(totalResult[0].count)
+    const totalCount = includeTotal
+      ? Number((await db.select({ count: sql<number>`count(*)` })
+        .from(messages)
+        .where(baseConditions))[0].count)
+      : undefined
 
     const conditions = [baseConditions]
 
@@ -150,7 +152,7 @@ export async function GET(
         received_at: msg.receivedAt?.getTime()
       })),
       nextCursor,
-      total: totalCount
+      ...(includeTotal ? { total: totalCount } : {})
     })
   } catch (error) {
     console.error('Failed to fetch messages:', error)

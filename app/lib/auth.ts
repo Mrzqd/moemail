@@ -73,11 +73,7 @@ export async function getUserRole(userId: string) {
   return userRoleRecords[0].role.name
 }
 
-export async function checkPermission(permission: Permission) {
-  const userId = await getUserId()
-
-  if (!userId) return false
-
+export async function checkPermissionForUser(userId: string, permission: Permission) {
   const db = createDb()
   const userRoleRecords = await db.query.userRoles.findMany({
     where: eq(userRoles.userId, userId),
@@ -86,6 +82,14 @@ export async function checkPermission(permission: Permission) {
 
   const userRoleNames = userRoleRecords.map(ur => ur.role.name)
   return hasPermission(userRoleNames as Role[], permission)
+}
+
+export async function checkPermission(permission: Permission) {
+  const userId = await getUserId()
+
+  if (!userId) return false
+
+  return checkPermissionForUser(userId, permission)
 }
 
 export const {
