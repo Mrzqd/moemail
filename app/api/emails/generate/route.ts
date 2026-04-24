@@ -13,14 +13,32 @@ import { ROLES } from "@/lib/permissions"
 export const runtime = "edge"
 
 export async function POST(request: Request) {
+  const startedAt = Date.now()
+  const timings: string[] = []
+  const mark = (name: string, from: number) => {
+    timings.push(`${name};dur=${Date.now() - from}`)
+    return Date.now()
+  }
+  const json = (body: unknown, init?: ResponseInit) => {
+    const headers = new Headers(init?.headers)
+    headers.set('Server-Timing', [...timings, `total;dur=${Date.now() - startedAt}`].join(', '))
+    return NextResponse.json(body, { ...init, headers })
+  }
+
+  let tick = Date.now()
   const db = createDb()
+  tick = mark('create-db', tick)
   const env = getRequestContext().env
+  tick = mark('env', tick)
 
   const userId = await getUserId()
+  tick = mark('user', tick)
   const userRole = await getUserRole(userId!)
+  tick = mark('role', tick)
 
   try {
     if (userRole !== ROLES.EMPEROR) {
+      const quotaStartedAt = Date.now()
       const maxEmails = await env.SITE_CONFIG.get("MAX_EMAILS") || EMAIL_CONFIG.MAX_ACTIVE_EMAILS.toString()
       const activeEmailsCount = await db
         .select({ count: sql<number>`count(*)` })
@@ -32,8 +50,9 @@ export async function POST(request: Request) {
           )
         )
       
+      timings.push(`quota;dur=${Date.now() - quotaStartedAt}`)
       if (Number(activeEmailsCount[0].count) >= Number(maxEmails)) {
-        return NextResponse.json(
+        return json(
           { error: `已达到最大邮箱数量限制 (${maxEmails})` },
           { status: 403 }
         )
@@ -53,23 +72,27 @@ export async function POST(request: Request) {
       )
     }
 
+    const domainsStartedAt = Date.now()
     const domainString = await env.SITE_CONFIG.get("EMAIL_DOMAINS")
+    timings.push(`domains-kv;dur=${Date.now() - domainsStartedAt}`)
     const domains = domainString ? domainString.split(',') : ["moemail.app"]
 
     if (!domains || !domains.includes(domain)) {
-      return NextResponse.json(
+      return json(
         { error: "无效的域名" },
         { status: 400 }
       )
     }
 
     const address = `${name || nanoid(8)}@${domain}`
+    const existingStartedAt = Date.now()
     const existingEmail = await db.query.emails.findFirst({
       where: eq(sql`LOWER(${emails.address})`, address.toLowerCase())
     })
+    timings.push(`existing-email;dur=${Date.now() - existingStartedAt}`)
 
     if (existingEmail) {
-      return NextResponse.json(
+      return json(
         { error: "该邮箱地址已被使用" },
         { status: 409 }
       )
@@ -87,17 +110,19 @@ export async function POST(request: Request) {
       userId: userId!
     }
     
+    const insertStartedAt = Date.now()
     const result = await db.insert(emails)
       .values(emailData)
       .returning({ id: emails.id, address: emails.address })
+    timings.push(`insert;dur=${Date.now() - insertStartedAt}`)
     
-    return NextResponse.json({ 
+    return json({ 
       id: result[0].id,
       email: result[0].address 
     })
   } catch (error) {
     console.error('Failed to generate email:', error)
-    return NextResponse.json(
+    return json(
       { error: "创建邮箱失败" },
       { status: 500 }
     )

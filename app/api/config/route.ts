@@ -5,10 +5,35 @@ import { checkPermission } from "@/lib/auth"
 
 export const runtime = "edge"
 
-export async function GET() {
-  const env = getRequestContext().env
-  const canManageConfig = await checkPermission(PERMISSIONS.MANAGE_CONFIG)
+export async function GET(request: Request) {
+  const startedAt = Date.now()
+  const timings: string[] = []
+  const mark = (name: string, from: number) => {
+    timings.push(`${name};dur=${Date.now() - from}`)
+    return Date.now()
+  }
+  const json = (body: unknown, init?: ResponseInit) => {
+    const headers = new Headers(init?.headers)
+    headers.set('Server-Timing', [...timings, `total;dur=${Date.now() - startedAt}`].join(', '))
+    return Response.json(body, { ...init, headers })
+  }
 
+  let tick = Date.now()
+  const env = getRequestContext().env
+  tick = mark('env', tick)
+
+  const hasCredentials = Boolean(
+    request.headers.get('X-API-Key') ||
+    request.headers.get('Authorization') ||
+    request.headers.get('Cookie')
+  )
+
+  const canManageConfig = hasCredentials
+    ? await checkPermission(PERMISSIONS.MANAGE_CONFIG)
+    : false
+  tick = mark('permission', tick)
+
+  const configStartedAt = Date.now()
   const [
     defaultRole,
     emailDomains,
@@ -24,10 +49,11 @@ export async function GET() {
     env.SITE_CONFIG.get("MAX_EMAILS"),
     env.SITE_CONFIG.get("TURNSTILE_ENABLED"),
     env.SITE_CONFIG.get("TURNSTILE_SITE_KEY"),
-    env.SITE_CONFIG.get("TURNSTILE_SECRET_KEY")
+    canManageConfig ? env.SITE_CONFIG.get("TURNSTILE_SECRET_KEY") : Promise.resolve("")
   ])
+  timings.push(`kv;dur=${Date.now() - configStartedAt}`)
 
-  return Response.json({
+  return json({
     defaultRole: defaultRole || ROLES.CIVILIAN,
     emailDomains: emailDomains || "moemail.app",
     adminContact: adminContact || "",
