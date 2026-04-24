@@ -1,29 +1,33 @@
-import { auth } from "@/lib/auth"
+import { getUserId } from "@/lib/apiKey"
 import { createDb } from "@/lib/db"
 import { apiKeys } from "@/lib/schema"
 import { nanoid } from "nanoid"
 import { NextResponse } from "next/server"
-import { checkPermission } from "@/lib/auth"
-import { PERMISSIONS } from "@/lib/permissions"
 import { desc, eq } from "drizzle-orm"
 
 export const runtime = "edge"
 
 export async function GET() {
-  const hasPermission = await checkPermission(PERMISSIONS.MANAGE_API_KEY)
-  if (!hasPermission) {
-    return NextResponse.json({ error: "权限不足" }, { status: 403 })
+  const startedAt = Date.now()
+  const timings: string[] = []
+  const json = (body: unknown, init?: ResponseInit) => {
+    const headers = new Headers(init?.headers)
+    headers.set('Server-Timing', [...timings, `total;dur=${Date.now() - startedAt}`].join(', '))
+    return NextResponse.json(body, { ...init, headers })
   }
 
-  const session = await auth()
+  const userStartedAt = Date.now()
+  const userId = await getUserId()
+  timings.push(`user;dur=${Date.now() - userStartedAt}`)
+
   try {
     const db = createDb()
     const keys = await db.query.apiKeys.findMany({
-      where: eq(apiKeys.userId, session!.user.id!),
+      where: eq(apiKeys.userId, userId!),
       orderBy: desc(apiKeys.createdAt),
     })
 
-    return NextResponse.json({
+    return json({
       apiKeys: keys.map(key => ({
         ...key,
         key: undefined
@@ -31,7 +35,7 @@ export async function GET() {
     })
   } catch (error) {
     console.error("Failed to fetch API keys:", error)
-    return NextResponse.json(
+    return json(
       { error: "获取 API Keys 失败" },
       { status: 500 }
     )
@@ -39,12 +43,7 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const hasPermission = await checkPermission(PERMISSIONS.MANAGE_API_KEY)
-  if (!hasPermission) {
-    return NextResponse.json({ error: "权限不足" }, { status: 403 })
-  }
-
-  const session = await auth()
+  const userId = await getUserId()
   try {
     const { name } = await request.json() as { name: string }
     if (!name?.trim()) {
@@ -60,7 +59,7 @@ export async function POST(request: Request) {
     await db.insert(apiKeys).values({
       name,
       key,
-      userId: session!.user.id!,
+      userId: userId!,
       expiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000), // 1 year
     })
 

@@ -1,7 +1,5 @@
 import { NextResponse } from "next/server"
 import { getRequestContext } from "@cloudflare/next-on-pages"
-import { checkPermission } from "@/lib/auth"
-import { PERMISSIONS } from "@/lib/permissions"
 import { EMAIL_CONFIG } from "@/config"
 
 export const runtime = "edge"
@@ -16,22 +14,24 @@ interface EmailServiceConfig {
 }
 
 export async function GET() {
-  const canAccess = await checkPermission(PERMISSIONS.MANAGE_CONFIG)
-
-  if (!canAccess) {
-    return NextResponse.json({
-      error: "权限不足"
-    }, { status: 403 })
+  const startedAt = Date.now()
+  const timings: string[] = []
+  const json = (body: unknown, init?: ResponseInit) => {
+    const headers = new Headers(init?.headers)
+    headers.set('Server-Timing', [...timings, `total;dur=${Date.now() - startedAt}`].join(', '))
+    return NextResponse.json(body, { ...init, headers })
   }
 
   try {
     const env = getRequestContext().env
+    const kvStartedAt = Date.now()
     const [enabled, apiKey, roleLimits] = await Promise.all([
       env.SITE_CONFIG.get("EMAIL_SERVICE_ENABLED"),
       env.SITE_CONFIG.get("RESEND_API_KEY"),
       env.SITE_CONFIG.get("EMAIL_ROLE_LIMITS")
     ])
 
+    timings.push(`kv;dur=${Date.now() - kvStartedAt}`)
     const customLimits = roleLimits ? JSON.parse(roleLimits) : {}
     
     const finalLimits = {
@@ -39,14 +39,14 @@ export async function GET() {
       knight: customLimits.knight !== undefined ? customLimits.knight : EMAIL_CONFIG.DEFAULT_DAILY_SEND_LIMITS.knight,
     }
 
-    return NextResponse.json({
+    return json({
       enabled: enabled === "true",
       apiKey: apiKey || "",
       roleLimits: finalLimits
     })
   } catch (error) {
     console.error("Failed to get email service config:", error)
-    return NextResponse.json(
+    return json(
       { error: "获取 Resend 发件服务配置失败" },
       { status: 500 }
     )
@@ -54,14 +54,6 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const canAccess = await checkPermission(PERMISSIONS.MANAGE_CONFIG)
-
-  if (!canAccess) {
-    return NextResponse.json({
-      error: "权限不足"
-    }, { status: 403 })
-  }
-
   try {
     const config = await request.json() as EmailServiceConfig
 

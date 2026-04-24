@@ -1,4 +1,4 @@
-import { auth } from "@/lib/auth"
+import { getUserId } from "@/lib/apiKey"
 import { createDb } from "@/lib/db"
 import { webhooks } from "@/lib/schema"
 import { eq } from "drizzle-orm"
@@ -12,19 +12,31 @@ const webhookSchema = z.object({
 })
 
 export async function GET() {
-  const session = await auth()
+  const startedAt = Date.now()
+  const timings: string[] = []
+  const json = (body: unknown, init?: ResponseInit) => {
+    const headers = new Headers(init?.headers)
+    headers.set('Server-Timing', [...timings, `total;dur=${Date.now() - startedAt}`].join(', '))
+    return Response.json(body, { ...init, headers })
+  }
+
+  const userStartedAt = Date.now()
+  const userId = await getUserId()
+  timings.push(`user;dur=${Date.now() - userStartedAt}`)
 
   const db = createDb()
+  const dbStartedAt = Date.now()
   const webhook = await db.query.webhooks.findFirst({
-    where: eq(webhooks.userId, session!.user!.id!)
+    where: eq(webhooks.userId, userId!)
   })
+  timings.push(`db;dur=${Date.now() - dbStartedAt}`)
 
-  return Response.json(webhook || { enabled: false, url: "" })
+  return json(webhook || { enabled: false, url: "" })
 }
 
 export async function POST(request: Request) {
-  const session = await auth()
-  if (!session?.user?.id) {
+  const userId = await getUserId()
+  if (!userId) {
     return Response.json({ error: "Unauthorized" }, { status: 401 })
   }
 
@@ -36,7 +48,7 @@ export async function POST(request: Request) {
     const now = new Date()
 
     const existingWebhook = await db.query.webhooks.findFirst({
-      where: eq(webhooks.userId, session.user.id)
+      where: eq(webhooks.userId, userId)
     })
 
     if (existingWebhook) {
@@ -47,12 +59,12 @@ export async function POST(request: Request) {
           enabled,
           updatedAt: now
         })
-        .where(eq(webhooks.userId, session.user.id))
+        .where(eq(webhooks.userId, userId))
     } else {
       await db
         .insert(webhooks)
         .values({
-          userId: session.user.id,
+          userId,
           url,
           enabled,
         })

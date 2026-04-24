@@ -23,7 +23,6 @@ export async function GET(request: Request) {
   mark('env', envStartedAt)
 
   const hasCredentials = Boolean(
-    request.headers.get('X-API-Key') ||
     request.headers.get('Authorization') ||
     request.headers.get('Cookie')
   )
