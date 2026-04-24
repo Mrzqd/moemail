@@ -108,13 +108,13 @@ export const {
 
   return {
     logger: {
-      error(code, metadata) {
-        console.error('AUTH_ERROR', code, metadata)
+      error(error: Error) {
+        console.error('AUTH_ERROR', error)
       },
-      warn(code) {
+      warn(code: string) {
         console.warn('AUTH_WARN', code)
       },
-      debug(code, metadata) {
+      debug(code: string, metadata?: unknown) {
         console.log('AUTH_DEBUG', code, metadata)
       },
     },
