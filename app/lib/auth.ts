@@ -97,23 +97,27 @@ export const {
   auth,
   signIn,
   signOut
-} = NextAuth(() => ({
-  secret: process.env.AUTH_SECRET,
-  adapter: DrizzleAdapter(createDb(), {
-    usersTable: users,
-    accountsTable: accounts,
-  }),
-  providers: [
-    GitHub({
-      clientId: process.env.AUTH_GITHUB_ID,
-      clientSecret: process.env.AUTH_GITHUB_SECRET,
-      allowDangerousEmailAccountLinking: true,
+} = NextAuth(() => {
+  const env = getRequestContext().env
+
+  return {
+    secret: env.AUTH_SECRET,
+    trustHost: true,
+    adapter: DrizzleAdapter(createDb(), {
+      usersTable: users,
+      accountsTable: accounts,
     }),
-    Google({
-      clientId: process.env.AUTH_GOOGLE_ID,
-      clientSecret: process.env.AUTH_GOOGLE_SECRET,
-      allowDangerousEmailAccountLinking: true,
-    }),
+    providers: [
+      GitHub({
+        clientId: env.AUTH_GITHUB_ID,
+        clientSecret: env.AUTH_GITHUB_SECRET,
+        allowDangerousEmailAccountLinking: true,
+      }),
+      ...(env.AUTH_GOOGLE_ID && env.AUTH_GOOGLE_SECRET ? [Google({
+        clientId: env.AUTH_GOOGLE_ID,
+        clientSecret: env.AUTH_GOOGLE_SECRET,
+        allowDangerousEmailAccountLinking: true,
+      })] : []),
     CredentialsProvider({
       name: "Credentials",
       credentials: {
@@ -234,10 +238,11 @@ export const {
       return session
     },
   },
-  session: {
-    strategy: "jwt",
-  },
-}))
+    session: {
+      strategy: "jwt",
+    },
+  }
+})
 
 export async function register(username: string, password: string) {
   const db = createDb()
