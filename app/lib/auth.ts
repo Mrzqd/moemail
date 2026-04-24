@@ -107,18 +107,6 @@ export const {
   }
 
   return {
-    logger: {
-      error(error: Error) {
-        console.error('AUTH_ERROR', error)
-      },
-      warn(code: string) {
-        console.warn('AUTH_WARN', code)
-      },
-      debug(code: string, metadata?: unknown) {
-        console.log('AUTH_DEBUG', code, metadata)
-      },
-    },
-    debug: true,
     secret: env.AUTH_SECRET,
     trustHost: true,
     adapter: DrizzleAdapter(createDb(), {
