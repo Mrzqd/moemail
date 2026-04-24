@@ -28,10 +28,11 @@ export async function GET(request: Request) {
     request.headers.get('Cookie')
   )
 
+  const permissionStartedAt = Date.now()
   const canManageConfig = hasCredentials
     ? await checkPermission(PERMISSIONS.MANAGE_CONFIG)
     : false
-  tick = mark('permission', tick)
+  mark('permission', permissionStartedAt)
 
   const configStartedAt = Date.now()
   const [
