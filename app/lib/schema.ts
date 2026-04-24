@@ -73,6 +73,8 @@ export const messages = sqliteTable("message", {
 }, (table) => ({
   emailIdIdx: index("message_email_id_idx").on(table.emailId),
   emailIdReceivedAtTypeIdx: index("message_email_id_received_at_type_idx").on(table.emailId, table.receivedAt, table.type),
+  emailIdReceivedAtIdIdx: index("message_email_id_received_at_id_idx").on(table.emailId, table.receivedAt, table.id),
+  emailIdTypeSentAtIdIdx: index("message_email_id_type_sent_at_id_idx").on(table.emailId, table.type, table.sentAt, table.id),
 }))
 
 export const webhooks = sqliteTable('webhook', {

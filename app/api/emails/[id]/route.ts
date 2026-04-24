@@ -72,19 +72,12 @@ export async function GET(
       }
     }
 
-    const email = await db.query.emails.findFirst({
+    const emailPromise = db.query.emails.findFirst({
       where: and(
         eq(emails.id, id),
         eq(emails.userId, userId!)
       )
     })
-
-    if (!email) {
-      return NextResponse.json(
-        { error: "无权限查看" },
-        { status: 403 }
-      )
-    }
 
     const baseConditions = and(
       eq(messages.emailId, id),
@@ -96,11 +89,11 @@ export async function GET(
           )
     )
 
-    const totalCount = includeTotal
-      ? Number((await db.select({ count: sql<number>`count(*)` })
+    const totalPromise = includeTotal
+      ? db.select({ count: sql<number>`count(*)` })
         .from(messages)
-        .where(baseConditions))[0].count)
-      : undefined
+        .where(baseConditions)
+      : Promise.resolve(undefined)
 
     const conditions = [baseConditions]
 
@@ -120,7 +113,7 @@ export async function GET(
 
     const orderByTime = messageType === 'sent' ? messages.sentAt : messages.receivedAt
     
-    const results = await db.query.messages.findMany({
+    const resultsPromise = db.query.messages.findMany({
       where: and(...conditions),
       orderBy: (messages, { desc }) => [
         desc(orderByTime),
@@ -128,6 +121,23 @@ export async function GET(
       ],
       limit: PAGE_SIZE + 1
     })
+
+    const [email, totalResult, results] = await Promise.all([
+      emailPromise,
+      totalPromise,
+      resultsPromise,
+    ])
+
+    if (!email) {
+      return NextResponse.json(
+        { error: "无权限查看" },
+        { status: 403 }
+      )
+    }
+
+    const totalCount = includeTotal && totalResult
+      ? Number(totalResult[0].count)
+      : undefined
     
     const hasMore = results.length > PAGE_SIZE
     const nextCursor = hasMore 
