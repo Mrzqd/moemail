@@ -38,13 +38,42 @@ async function proxyToPages(request: Request) {
   const url = new URL(request.url)
   const target = new URL(url.pathname + url.search, PAGES_ORIGIN)
   const headers = new Headers(request.headers)
-  headers.set('Host', new URL(PAGES_ORIGIN).host)
-  return fetch(new Request(target, {
+
+  // Keep the public origin visible to NextAuth/Auth.js so generated signin and
+  // callback URLs use the configured custom domain instead of the Pages subdomain.
+  headers.set('Host', url.host)
+  headers.set('X-Forwarded-Host', url.host)
+  headers.set('X-Forwarded-Proto', url.protocol.replace(':', ''))
+  headers.set('X-Forwarded-Port', url.protocol === 'https:' ? '443' : '80')
+
+  const response = await fetch(new Request(target, {
     method: request.method,
     headers,
     body: request.method === 'GET' || request.method === 'HEAD' ? undefined : request.body,
     redirect: 'manual',
   }))
+
+  const publicOrigin = url.origin
+  const pagesOrigin = new URL(PAGES_ORIGIN).origin
+  const responseHeaders = new Headers(response.headers)
+  const location = responseHeaders.get('Location')
+  if (location) {
+    responseHeaders.set('Location', location
+      .replaceAll(pagesOrigin, publicOrigin)
+      .replaceAll(encodeURIComponent(pagesOrigin), encodeURIComponent(publicOrigin)))
+  }
+
+  const contentType = responseHeaders.get('content-type') || ''
+  if (contentType.includes('application/json') || contentType.startsWith('text/')) {
+    const text = await response.text()
+    const rewritten = text
+      .replaceAll(pagesOrigin, publicOrigin)
+      .replaceAll(encodeURIComponent(pagesOrigin), encodeURIComponent(publicOrigin))
+    responseHeaders.delete('content-length')
+    return new Response(rewritten, { status: response.status, statusText: response.statusText, headers: responseHeaders })
+  }
+
+  return new Response(response.body, { status: response.status, statusText: response.statusText, headers: responseHeaders })
 }
 
 function parseCookies(request: Request) {
