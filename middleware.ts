@@ -33,12 +33,6 @@ export async function middleware(request: Request) {
     request.headers.delete("X-User-Id")
     const apiKey = request.headers.get("X-API-Key")
     if (apiKey) {
-      if (pathname.startsWith('/api/config') && (pathname !== '/api/config' || request.method !== 'GET')) {
-        return NextResponse.json(
-          { error: "无权限查看" },
-          { status: 403 }
-        )
-      }
       return handleApiKeyAuth(apiKey, pathname)
     }
 
